@@ -9,7 +9,7 @@ use kick_api::KickOAuth;
 use rootcause::{option_ext::OptionExt, prelude::*};
 use twitch_highway::{AccessToken, ClientId, streams::StreamsAPI, users::UserAPI};
 
-use crate::{kick::get_kick_viewer_count, twitch::get_app_access_token, vk::get_vk_viewer_count};
+use crate::{kick::Kick, twitch::Twitch, vk::VK};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -44,34 +44,19 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<(), Report> {
-    let http = reqwest::Client::new();
     dotenvy::dotenv()?;
+    let http = Arc::new(reqwest::Client::new());
     let args = Args::parse();
 
-    let token = get_app_access_token(&http, &args.twitch_client_id, &args.twitch_secret).await?;
-
-    let client = Arc::new(twitch_highway::Client::new(
-        AccessToken::from(token),
-        ClientId::from(args.twitch_client_id.clone()),
-    ));
-
-    // Initialize Kick OAuth client
-    let oauth = KickOAuth::new_server(args.kick_client_id.clone(), args.kick_secret.clone())
-        .map_err(|e| report!(e.to_string()))?;
-    let oauth = Arc::new(oauth);
-    let token = oauth
-        .get_app_access_token()
-        .await
-        .map_err(|e| report!(e.to_string()))?;
-
-    // Initialize Kick API client
-    let kick_client = Arc::new(kick_api::KickApiClient::with_token(token.access_token));
+    let twitch = Twitch::new(http.clone(), &args.twitch_client_id, &args.twitch_secret).await?;
+    let kick = Kick::new(args.kick_client_id, args.kick_secret).await?;
+    let vk = VK::new(http.clone(), args.vk_client_id, args.vk_secret);
 
     loop {
         let (twitch, kick, vk, _) = tokio::join!(
-            get_twitch_viewer_count(client.clone(), &args),
-            get_kick_viewer_count(kick_client.clone(), &args.kick_user),
-            get_vk_viewer_count(&http, &args.vk_user, &args.vk_client_id, &args.vk_secret),
+            twitch.get_twitch_viewer_count(&args.twitch_user),
+            kick.get_viewer_count(&args.kick_user),
+            vk.get_vk_viewer_count(&args.vk_user),
             tokio::time::sleep(Duration::from_secs(3))
         );
         // Get Twitch viewer count
@@ -87,27 +72,4 @@ async fn main() -> Result<(), Report> {
     }
 
     Ok(())
-}
-
-async fn get_twitch_viewer_count(
-    client: Arc<twitch_highway::Client>,
-    args: &Args,
-) -> Result<u64, Report> {
-    let res = client
-        .get_users()
-        .logins(&[args.twitch_user.as_str()])
-        .send()
-        .await?;
-
-    let user_id = res.data.first().ok_or_report()?.id.clone();
-
-    let res = client.get_streams().user_ids(&[user_id]).send().await?;
-    let views = res
-        .data
-        .ok_or_report()?
-        .first()
-        .ok_or_report()?
-        .viewer_count;
-
-    Ok(views)
 }

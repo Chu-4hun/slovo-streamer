@@ -8,79 +8,77 @@
 //! tokio = { version = "1", features = ["full"] }
 //! ```
 
-use serde::Deserialize;
+use std::sync::Arc;
 
-const HELIX_BASE: &str = "https://api.twitch.tv/helix";
+use reqwest::Client;
+use rootcause::{Report, option_ext::OptionExt};
+use serde::Deserialize;
+use twitch_highway::{AccessToken, ClientId, streams::StreamsAPI, users::UserAPI};
 
 #[derive(Debug, Deserialize)]
 struct AppTokenResponse {
     access_token: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct StreamsResponse {
-    data: Vec<StreamEntry>,
+pub struct Twitch {
+    client: Arc<twitch_highway::Client>,
 }
 
-#[derive(Debug, Deserialize)]
-struct StreamEntry {
-    viewer_count: u64,
+impl Twitch {
+    pub async fn new(
+        http: Arc<Client>,
+        twitch_client_id: &str,
+        twitch_secret: &str,
+    ) -> Result<Self, Report> {
+        let token = Self::get_app_access_token(&http, twitch_client_id, twitch_secret).await?;
+
+        let client = Arc::new(twitch_highway::Client::new(
+            AccessToken::from(token),
+            ClientId::from(twitch_client_id),
+        ));
+
+        Ok(Self { client })
+    }
+
+    async fn get_app_access_token(
+        http: &reqwest::Client,
+        client_id: &str,
+        client_secret: &str,
+    ) -> Result<String, reqwest::Error> {
+        let resp: AppTokenResponse = http
+            .post("https://id.twitch.tv/oauth2/token")
+            .form(&[
+                ("client_id", client_id),
+                ("client_secret", client_secret),
+                ("grant_type", "client_credentials"),
+            ])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+
+        Ok(resp.access_token)
+    }
+
+    pub async fn get_twitch_viewer_count(&self, user: &str) -> Result<u64, Report> {
+        let res = self.client.get_users().logins(&[user]).send().await?;
+
+        let user_id = res.data.first().ok_or_report()?.id.clone();
+
+        let res = self
+            .client
+            .get_streams()
+            .user_ids(&[user_id])
+            .send()
+            .await?;
+        let views = res
+            .data
+            .ok_or_report()?
+            .first()
+            .ok_or_report()?
+            .viewer_count;
+
+        Ok(views)
+    }
 }
-
-/// Gets a free app-only access token (client_credentials grant).
-/// Twitch requires this on every Helix call — there is no anonymous tier.
-pub async fn get_app_access_token(
-    http: &reqwest::Client,
-    client_id: &str,
-    client_secret: &str,
-) -> Result<String, reqwest::Error> {
-    let resp: AppTokenResponse = http
-        .post("https://id.twitch.tv/oauth2/token")
-        .form(&[
-            ("client_id", client_id),
-            ("client_secret", client_secret),
-            ("grant_type", "client_credentials"),
-        ])
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
-
-    Ok(resp.access_token)
-}
-
-/// Returns the current viewer count for `login`, or `None` if the channel is offline.
-pub async fn get_viewer_count(
-    http: &reqwest::Client,
-    client_id: &str,
-    access_token: &str,
-    login: &str,
-) -> Result<Option<u64>, reqwest::Error> {
-    let resp: StreamsResponse = http
-        .get(format!("{HELIX_BASE}/streams"))
-        .bearer_auth(access_token)
-        .header("Client-Id", client_id)
-        .query(&[("user_login", login)])
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
-
-    Ok(resp.data.into_iter().next().map(|s| s.viewer_count))
-}
-
-// Example usage:
-//
-// #[tokio::main]
-// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//     let http = reqwest::Client::new();
-//     let token = get_app_access_token(&http, "YOUR_CLIENT_ID", "YOUR_CLIENT_SECRET").await?;
-//
-//     match get_viewer_count(&http, "YOUR_CLIENT_ID", &token, "some_streamer").await? {
-//         Some(count) => println!("{count} viewers watching right now"),
-//         None => println!("Channel is offline"),
-//     }
-//     Ok(())
-// }
