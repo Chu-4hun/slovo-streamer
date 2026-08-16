@@ -11,9 +11,11 @@
 use std::sync::Arc;
 
 use reqwest::Client;
-use rootcause::{Report, option_ext::OptionExt};
+use rootcause::{Report, option_ext::OptionExt, prelude::ResultExt};
 use serde::Deserialize;
 use twitch_highway::{AccessToken, ClientId, streams::StreamsAPI, users::UserAPI};
+
+use crate::ParsePlatform;
 
 #[derive(Debug, Deserialize)]
 struct AppTokenResponse {
@@ -22,6 +24,31 @@ struct AppTokenResponse {
 
 pub struct Twitch {
     client: Arc<twitch_highway::Client>,
+}
+
+impl ParsePlatform for Twitch {
+    async fn get_viewer_count(&self, user: &str) -> Result<u64, Report> {
+        let res = self.client.get_users().logins(&[user]).send().await?;
+
+        let user_id = res.data.first().ok_or_report()?.id.clone();
+
+        let res = self
+            .client
+            .get_streams()
+            .user_ids(&[user_id])
+            .send()
+            .await?;
+        let views = res
+            .data
+            .ok_or_report()
+            .context(format!("{user}, is not streaming"))?
+            .first()
+            .ok_or_report()
+            .context(format!("{user}, is not streaming"))?
+            .viewer_count;
+
+        Ok(views)
+    }
 }
 
 impl Twitch {
@@ -59,26 +86,5 @@ impl Twitch {
             .await?;
 
         Ok(resp.access_token)
-    }
-
-    pub async fn get_twitch_viewer_count(&self, user: &str) -> Result<u64, Report> {
-        let res = self.client.get_users().logins(&[user]).send().await?;
-
-        let user_id = res.data.first().ok_or_report()?.id.clone();
-
-        let res = self
-            .client
-            .get_streams()
-            .user_ids(&[user_id])
-            .send()
-            .await?;
-        let views = res
-            .data
-            .ok_or_report()?
-            .first()
-            .ok_or_report()?
-            .viewer_count;
-
-        Ok(views)
     }
 }

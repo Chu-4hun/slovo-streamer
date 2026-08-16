@@ -1,75 +1,123 @@
-mod kick;
-pub mod twitch;
-pub mod vk;
-
 use std::{sync::Arc, time::Duration};
 
 use clap::Parser;
-use kick_api::KickOAuth;
-use rootcause::{option_ext::OptionExt, prelude::*};
-use twitch_highway::{AccessToken, ClientId, streams::StreamsAPI, users::UserAPI};
-
-use crate::{kick::Kick, twitch::Twitch, vk::VK};
+use rootcause::prelude::*;
+use slovo::{ViewerCounts, fetch_viewer_counts, kick::Kick, twitch::Twitch, vk::VK};
+use tracing::{info, warn};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
     #[arg(long, env)]
-    twitch_client_id: String,
+    twitch_client_id: Option<String>,
 
     #[arg(long, env)]
-    twitch_secret: String,
+    twitch_secret: Option<String>,
 
     #[arg(alias = "tuser", long, env)]
-    twitch_user: String,
+    twitch_user: Option<String>,
 
     #[arg(long, env)]
-    kick_client_id: String,
+    kick_client_id: Option<String>,
 
     #[arg(long, env)]
-    kick_secret: String,
+    kick_secret: Option<String>,
 
     #[arg(alias = "kuser", long, env)]
-    kick_user: String,
+    kick_user: Option<String>,
 
     #[arg(long, env)]
-    vk_client_id: String,
+    vk_client_id: Option<String>,
 
     #[arg(long, env)]
-    vk_secret: String,
+    vk_secret: Option<String>,
 
     #[arg(alias = "vuser", long, env)]
-    vk_user: String,
+    vk_user: Option<String>,
+
+    /// Timeout for each fetch
+    #[arg(alias = "timeout", long, env, default_value_t = 5)]
+    timeout_secs: u64,
+
+    /// Cooldown time between updates in seconds
+    #[arg(alias = "cooldown", long, env, default_value_t = 3)]
+    cooldown_secs: u64,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Report> {
     dotenvy::dotenv()?;
+    tracing_subscriber::fmt()
+        .with_file(true)
+        .with_line_number(true)
+        .with_writer(std::io::stderr)
+        .init();
     let http = Arc::new(reqwest::Client::new());
     let args = Args::parse();
 
-    let twitch = Twitch::new(http.clone(), &args.twitch_client_id, &args.twitch_secret).await?;
-    let kick = Kick::new(args.kick_client_id, args.kick_secret).await?;
-    let vk = VK::new(http.clone(), args.vk_client_id, args.vk_secret);
+    // Создаём Twitch, если заданы все параметры
+    let twitch = if let (Some(client_id), Some(secret), Some(_)) = (
+        args.twitch_client_id.as_deref(),
+        args.twitch_secret.as_deref(),
+        args.twitch_user.as_deref(),
+    ) {
+        Some(Twitch::new(http.clone(), client_id, secret).await?)
+    } else {
+        warn!("⚠️  Twitch не настроен (пропущен)");
+        None
+    };
+
+    // Создаём Kick, если заданы все параметры
+    let kick = if let (Some(client_id), Some(secret), Some(_)) = (
+        args.kick_client_id.as_deref(),
+        args.kick_secret.as_deref(),
+        args.kick_user.as_deref(),
+    ) {
+        Some(Kick::new(client_id.to_string(), secret.to_string()).await?)
+    } else {
+        warn!("⚠️  Kick не настроен (пропущен)");
+        None
+    };
+
+    // Создаём VK, если заданы все параметры
+    let vk = if let (Some(client_id), Some(secret), Some(_)) = (
+        args.vk_client_id.as_deref(),
+        args.vk_secret.as_deref(),
+        args.vk_user.as_deref(),
+    ) {
+        Some(VK::new(
+            http.clone(),
+            client_id.to_string(),
+            secret.to_string(),
+        ))
+    } else {
+        warn!("⚠️  VK не настроен (пропущен)");
+        None
+    };
+
+    let timeout = Duration::from_secs(args.timeout_secs);
+
+    let mut counts = ViewerCounts::default();
 
     loop {
-        let (twitch, kick, vk, _) = tokio::join!(
-            twitch.get_twitch_viewer_count(&args.twitch_user),
-            kick.get_viewer_count(&args.kick_user),
-            vk.get_vk_viewer_count(&args.vk_user),
-            tokio::time::sleep(Duration::from_secs(3))
-        );
-        // Get Twitch viewer count
-        let twitch_views = twitch?;
-        println!("🟣 twitch views {twitch_views}");
+        let new_counts = fetch_viewer_counts(
+            twitch.as_ref(),
+            kick.as_ref(),
+            vk.as_ref(),
+            args.twitch_user.as_deref(),
+            args.kick_user.as_deref(),
+            args.vk_user.as_deref(),
+            timeout,
+        )
+        .await;
 
-        // Get Kick viewer count
-        let kick_views = kick?;
-        println!("🟢 kick views {kick_views}");
+        if counts != new_counts {
+            println!("{}", serde_json::to_string(&new_counts)?);
+            counts = new_counts
+        } else {
+            info!("stats did not change");
+        }
 
-        let vk = vk?;
-        println!("🔵 vk views {vk}");
+        tokio::time::sleep(Duration::from_secs(args.cooldown_secs)).await;
     }
-
-    Ok(())
 }
