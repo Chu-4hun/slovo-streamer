@@ -1,0 +1,2 @@
+GET https://apidev.live.vkvideo.ru/v1/channel?channel_url=c1ymba HTTP/1.1
+Authorization: Basic user pass
