@@ -14,7 +14,9 @@ use poem::{
 };
 use rootcause::prelude::*;
 use serde::{Deserialize, Serialize};
-use slovo::{ViewerCounts, fetch_viewer_counts, kick::Kick, twitch::Twitch, vk::VK};
+use slovo::{
+    ViewerCounts, fetch_viewer_counts, kick::Kick, twitch::Twitch, vk::VK, youtube::YouTube,
+};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -43,6 +45,10 @@ struct ConfigRequest {
     vk_secret: Option<String>,
     vk_user: Option<String>,
 
+    youtube_api_key: Option<String>,
+    /// Хэндл канала (`@channel`, с `@` или без)
+    youtube_user: Option<String>,
+
     #[serde(default = "default_timeout_secs")]
     timeout_secs: u64,
 
@@ -67,6 +73,7 @@ struct ConfigResponse {
     twitch: bool,
     kick: bool,
     vk: bool,
+    youtube: bool,
 }
 
 /// Живые сервисы платформ + параметры опроса одного клиента.
@@ -74,9 +81,11 @@ struct Services {
     twitch: Option<Twitch>,
     kick: Option<Kick>,
     vk: Option<VK>,
+    youtube: Option<YouTube>,
     twitch_user: Option<String>,
     kick_user: Option<String>,
     vk_user: Option<String>,
+    youtube_user: Option<String>,
     timeout: Duration,
     poll_interval: Duration,
 }
@@ -177,9 +186,28 @@ async fn set_config(
         cfg.vk_secret.as_deref(),
         cfg.vk_user.as_deref(),
     ) {
-        Some(VK::new(http.clone(), client_id.to_string(), secret.to_string()))
+        Some(VK::new(
+            http.clone(),
+            client_id.to_string(),
+            secret.to_string(),
+        ))
     } else {
         warn!("⚠️  VK не настроен (пропущен)");
+        None
+    };
+
+    let youtube = if let (Some(api_key), Some(_)) =
+        (cfg.youtube_api_key.as_deref(), cfg.youtube_user.as_deref())
+    {
+        match YouTube::new(api_key.to_string()) {
+            Ok(y) => Some(y),
+            Err(err) => {
+                error!("не удалось инициализировать YouTube: {err}");
+                None
+            }
+        }
+    } else {
+        warn!("⚠️  YouTube не настроен (пропущен)");
         None
     };
 
@@ -191,23 +219,26 @@ async fn set_config(
         twitch: twitch.is_some(),
         kick: kick.is_some(),
         vk: vk.is_some(),
+        youtube: youtube.is_some(),
     };
 
     let services = Arc::new(Services {
         twitch,
         kick,
         vk,
+        youtube,
         twitch_user: cfg.twitch_user,
         kick_user: cfg.kick_user,
         vk_user: cfg.vk_user,
+        youtube_user: cfg.youtube_user,
         timeout: Duration::from_secs(cfg.timeout_secs),
         poll_interval: Duration::from_secs(cfg.poll_secs),
     });
 
     sessions.write().await.insert(id.clone(), services);
     info!(
-        "создан конфиг {id}: twitch={} kick={} vk={}",
-        response.twitch, response.kick, response.vk
+        "создан конфиг {id}: twitch={} kick={} vk={} youtube={}",
+        response.twitch, response.kick, response.vk, response.youtube
     );
 
     Ok(Json(response))
@@ -263,9 +294,11 @@ async fn ws(
                         services.twitch.as_ref(),
                         services.kick.as_ref(),
                         services.vk.as_ref(),
+                        services.youtube.as_ref(),
                         services.twitch_user.as_deref(),
                         services.kick_user.as_deref(),
                         services.vk_user.as_deref(),
+                        services.youtube_user.as_deref(),
                         timeout,
                     )
                     .await;
@@ -302,6 +335,11 @@ async fn ws(
 #[tokio::main]
 async fn main() -> Result<(), Report> {
     dotenvy::dotenv().ok();
+
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("не удалось установить rustls CryptoProvider");
+    
     tracing_subscriber::fmt()
         .with_file(true)
         .with_line_number(true)

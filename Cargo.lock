@@ -918,6 +918,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "google-apis-common"
+version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "020dd415ee200770d835d01674084400a4d11e6c108ae941f660e8264f49d4ca"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "http 1.5.0",
+ "http-body-util",
+ "hyper 1.11.0",
+ "hyper-util",
+ "mime",
+ "percent-encoding",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tokio",
+ "url",
+ "yup-oauth2",
+]
+
+[[package]]
+name = "google-youtube3"
+version = "7.0.0+20251222"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e22583377376fc9daf9f5ccc344200d3e1bfb9088049177d21dcd71bfde72b19"
+dependencies = [
+ "chrono",
+ "google-apis-common",
+ "hyper 1.11.0",
+ "hyper-rustls 0.27.9",
+ "hyper-util",
+ "mime",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tokio",
+ "url",
+ "yup-oauth2",
+]
+
+[[package]]
 name = "h2"
 version = "0.3.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1228,6 +1270,7 @@ dependencies = [
  "hyper 1.11.0",
  "hyper-util",
  "rustls 0.23.43",
+ "rustls-native-certs",
  "tokio",
  "tokio-rustls 0.26.4",
  "tower-service",
@@ -1771,6 +1814,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "num_threads"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -2491,7 +2543,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0283386ce02abc0151e1761d08802dfe86c173b0b494af5cbc086574e453da06"
 dependencies = [
  "aws-lc-rs",
+ "log",
  "once_cell",
+ "ring",
  "rustls-pki-types",
  "rustls-webpki 0.103.14",
  "subtle",
@@ -2647,6 +2701,12 @@ dependencies = [
  "ring",
  "untrusted",
 ]
+
+[[package]]
+name = "seahash"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c107b6f4780854c8b126e228ea8869f4d7b71260f962fefb57b996b8959ba6b"
 
 [[package]]
 name = "security-framework"
@@ -2877,10 +2937,12 @@ dependencies = [
  "dotenvy",
  "futures",
  "futures-util",
+ "google-youtube3",
  "kick-api",
  "poem",
  "reqwest 0.13.4",
  "rootcause",
+ "rustls 0.23.43",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -3101,7 +3163,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134"
 dependencies = [
  "deranged",
+ "libc",
  "num-conv",
+ "num_threads",
  "powerfmt",
  "serde_core",
  "time-core",
@@ -4042,6 +4106,31 @@ dependencies = [
  "quote",
  "syn 2.0.119",
  "synstructure",
+]
+
+[[package]]
+name = "yup-oauth2"
+version = "12.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef19a12dfb29fe39f78e1547e1be49717b84aef8762a4001359ed4f94d3accc1"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "http 1.5.0",
+ "http-body-util",
+ "hyper 1.11.0",
+ "hyper-rustls 0.27.9",
+ "hyper-util",
+ "log",
+ "percent-encoding",
+ "rustls 0.23.43",
+ "seahash",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "time",
+ "tokio",
+ "url",
 ]
 
 [[package]]

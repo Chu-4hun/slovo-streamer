@@ -1,7 +1,7 @@
 # slovo
 
-Агрегатор количества зрителей с Twitch, Kick и VK Видео. Есть два режима
-работы:
+Агрегатор количества зрителей с Twitch, Kick, VK Видео и YouTube Live. Есть
+два режима работы:
 
 - **CLI** (`slovo_cli`) — конфиг из CLI-аргументов/`.env`, раз в несколько
   секунд печатает JSON со счётчиками в stdout.
@@ -22,6 +22,11 @@ https://dev.kick.com/dashboard
 
 https://dev.live.vkvideo.ru/apps
 
+### YouTube
+
+https://console.cloud.google.com/apis/credentials — включить *YouTube Data
+API v3* и создать API-ключ. OAuth не нужен, авторизация только по ключу.
+
 ## CLI-режим
 
 Настройки передаются флагами или переменными окружения (`.env`).
@@ -41,12 +46,17 @@ VK_CLIENT_ID=
 VK_SECRET=
 VK_USER=
 
+YOUTUBE_API_KEY=
+YOUTUBE_USER=
+
 TIMEOUT_SECS=5
 ```
 
+`YOUTUBE_USER` — это хэндл канала (`@channel`, с `@` или без).
+
 Платформу можно не настраивать — она просто пропускается с предупреждением
 в логе. Юзернейм платформы можно передать и напрямую флагом (`--tuser`,
-`--kuser`, `--vuser`), не трогая `.env`:
+`--kuser`, `--vuser`, `--yuser`), не трогая `.env`:
 
 ```
 $ cargo r --bin slovo -- --tuser qadrat --kuser deenthegreat
@@ -87,8 +97,9 @@ Content-Type: application/json
 ```
 
 Необязательные поля запроса: `kick_client_id` / `kick_secret` / `kick_user`,
-`vk_client_id` / `vk_secret` / `vk_user`, `timeout_secs` (по умолчанию 5) и
-`poll_secs` (по умолчанию 3, как часто опрашивать платформы).
+`vk_client_id` / `vk_secret` / `vk_user`, `youtube_api_key` / `youtube_user`
+(хэндл канала, `@channel`), `timeout_secs` (по умолчанию 5) и `poll_secs`
+(по умолчанию 3, как часто опрашивать платформы).
 
 Ответ:
 
@@ -103,13 +114,14 @@ date: Sun, 16 Aug 2026 22:54:12 GMT
   "ws_url": "ws://localhost:8080/ws/ccc68bef-5d55-4c1b-9c97-22c09b3a665a",
   "twitch": true,
   "kick": false,
-  "vk": false
+  "vk": false,
+  "youtube": false
 }
 ```
 
 `ws_url` — готовый адрес, на который нужно подключиться, чтобы получить
-именно этот конфиг. `twitch`/`kick`/`vk` показывают, какие платформы
-успешно инициализировались.
+именно этот конфиг. `twitch`/`kick`/`vk`/`youtube` показывают, какие
+платформы успешно инициализировались.
 
 ### 2. Подключиться по WebSocket
 

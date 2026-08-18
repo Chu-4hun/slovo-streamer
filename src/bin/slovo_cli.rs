@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use clap::Parser;
 use rootcause::prelude::*;
-use slovo::{ViewerCounts, fetch_viewer_counts, kick::Kick, twitch::Twitch, vk::VK};
+use slovo::{ViewerCounts, fetch_viewer_counts, kick::Kick, twitch::Twitch, vk::VK, youtube::YouTube};
 use tracing::{info, warn};
 
 #[derive(Parser, Debug)]
@@ -35,6 +35,13 @@ struct Args {
     #[arg(alias = "vuser", long, env)]
     vk_user: Option<String>,
 
+    #[arg(long, env)]
+    youtube_api_key: Option<String>,
+
+    /// Хэндл канала (`@channel`, с `@` или без)
+    #[arg(alias = "yuser", long, env)]
+    youtube_user: Option<String>,
+
     /// Timeout for each fetch
     #[arg(alias = "timeout", long, env, default_value_t = 5)]
     timeout_secs: u64,
@@ -47,6 +54,11 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<(), Report> {
     dotenvy::dotenv()?;
+
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("не удалось установить rustls CryptoProvider");
+    
     tracing_subscriber::fmt()
         .with_file(true)
         .with_line_number(true)
@@ -95,6 +107,17 @@ async fn main() -> Result<(), Report> {
         None
     };
 
+    // Создаём YouTube, если заданы все параметры
+    let youtube = if let (Some(api_key), Some(_)) = (
+        args.youtube_api_key.as_deref(),
+        args.youtube_user.as_deref(),
+    ) {
+        Some(YouTube::new(api_key.to_string())?)
+    } else {
+        warn!("⚠️  YouTube не настроен (пропущен)");
+        None
+    };
+
     let timeout = Duration::from_secs(args.timeout_secs);
 
     let mut counts = ViewerCounts::default();
@@ -104,9 +127,11 @@ async fn main() -> Result<(), Report> {
             twitch.as_ref(),
             kick.as_ref(),
             vk.as_ref(),
+            youtube.as_ref(),
             args.twitch_user.as_deref(),
             args.kick_user.as_deref(),
             args.vk_user.as_deref(),
+            args.youtube_user.as_deref(),
             timeout,
         )
         .await;
