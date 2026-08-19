@@ -1,5 +1,7 @@
 # slovo
 
+<img width="1606" height="172" alt="image" src="https://github.com/user-attachments/assets/63921361-83d2-4ffe-9f51-2c26364bc140" />
+
 Агрегатор количества зрителей с Twitch, Kick, VK Видео и YouTube Live. Есть
 два режима работы:
 
